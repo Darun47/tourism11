@@ -1,0 +1,199 @@
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
+diff --git a/chatbot_integration.py b/chatbot_integration.py
+index 10bfc120a8bc4b4bebd29e921fd3aae873d5bcb3..27237b1c4e01bb602eb305b1c9a7ab288461fdbc 100644
+--- a/chatbot_integration.py
++++ b/chatbot_integration.py
+@@ -140,135 +140,187 @@ Always:
+         
+         response = requests.post(
+             'https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent',
+             headers=headers,
+             json=payload
+         )
+         
+         return response.json()
+         """
+         
+         return self._generate_mock_response(message, context)
+     
+     def _generate_mock_response(
+         self,
+         message: str,
+         context: Optional[Dict[str, Any]]
+     ) -> Dict[str, Any]:
+         """
+         Generate mock response for demo purposes
+         """
+         message_lower = message.lower()
+         
+         # Greeting
+         if any(word in message_lower for word in ['hello', 'hi', 'hey']):
+             return {
+-                'message': "Hello! 👋 I'm your AI travel assistant. I can help you plan your perfect cultural tourism experience. What are you interested in exploring?",
++                'message': (
++                    "Hello! 👋 I'm your AI travel assistant. I can help you plan a cultural trip, "
++                    "suggest destinations, and build itineraries.\n\n"
++                    "To get started, tell me:\n"
++                    "• Your interests (art, history, nature, food, etc.)\n"
++                    "• Budget range (budget/mid-range/luxury)\n"
++                    "• Preferred season or climate (summer, winter, temperate)\n"
++                    "• Trip length\n"
++                ),
+                 'type': 'greeting',
+                 'suggestions': [
+                     'Recommend destinations for art lovers',
+                     'Plan a 5-day itinerary',
+                     'Find budget-friendly options',
+-                    'Suggest UNESCO World Heritage sites'
++                    'Suggest UNESCO World Heritage sites',
++                    'Recommend summer destinations'
+                 ]
+             }
+         
+         # Recommendation request
+         elif 'recommend' in message_lower or 'suggest' in message_lower:
+             # Use backend engine for real recommendations
+             cities = self.engine.cities[:3]
+             return {
+                 'message': f"Based on your interests, I recommend visiting {', '.join(cities)}. These cities offer rich cultural experiences, world-class museums, and historical landmarks. Would you like me to create a detailed itinerary for any of these destinations?",
+                 'type': 'recommendation',
+                 'data': {
+                     'cities': cities,
+                     'avg_costs': [180, 200, 150]
+                 }
+             }
+         
+         # Itinerary request
+         elif 'itinerary' in message_lower or 'plan' in message_lower:
+             return {
+                 'message': "I'd be happy to help you plan your itinerary! To create the perfect trip for you, I need a few details:\n\n1. How many days are you planning to travel?\n2. What's your budget range (Budget/Mid-range/Luxury)?\n3. What are your main interests (Art, History, Nature, etc.)?\n4. Do you have any accessibility requirements?\n\nOnce you share these details, I'll generate a personalized itinerary just for you!",
+                 'type': 'itinerary_planning',
+                 'requires_input': True
+             }
+         
+         # Cost/budget questions
+         elif 'cost' in message_lower or 'budget' in message_lower or 'price' in message_lower:
+             analytics = self.engine.get_analytics()
+             avg_cost = analytics['cost_analysis']['avg_daily_cost_usd']
+             
+             return {
+                 'message': f"Great question about costs! On average, travelers spend about ${avg_cost:.2f} per day. This includes accommodation, food, transportation, and site entrance fees.\n\n💰 Budget Breakdown:\n• Budget travel: $100-150/day\n• Mid-range: $150-250/day\n• Luxury: $250-400/day\n\nWould you like me to find destinations that fit your specific budget?",
+                 'type': 'cost_info',
+                 'data': {
+                     'avg_cost': avg_cost,
+                     'budget_ranges': {
+                         'budget': '100-150',
+                         'mid_range': '150-250',
+                         'luxury': '250-400'
+                     }
+                 }
+             }
+         
+         # Weather/climate questions
+         elif 'weather' in message_lower or 'climate' in message_lower or 'temperature' in message_lower:
+             return {
+                 'message': "The climate varies by destination:\n\n🌡️ Temperature Ranges:\n• Temperate cities: 10-20°C year-round (ideal for most travelers)\n• Cold destinations: Below 10°C (winter gear recommended)\n• Warm locations: Above 20°C (light clothing suggested)\n\nWhich type of climate do you prefer? I can recommend destinations that match your preference!",
+                 'type': 'weather_info'
+             }
++
++        # Season-specific recommendations
++        elif any(season in message_lower for season in ['spring', 'summer', 'autumn', 'fall', 'winter']):
++            season_map = {
++                'spring': 'Spring',
++                'summer': 'Summer',
++                'autumn': 'Autumn',
++                'fall': 'Autumn',
++                'winter': 'Winter'
++            }
++            matched_season = next(
++                (season_map[key] for key in season_map if key in message_lower),
++                None
++            )
++            if matched_season:
++                seasonal = self.engine.get_seasonal_recommendations(
++                    season=matched_season,
++                    budget=None,
++                    num_recommendations=3
++                )
++                destinations = [
++                    f"{rec['city']} ({rec['country']})"
++                    for rec in seasonal.get('recommendations', [])
++                ]
++                destination_text = ", ".join(destinations) if destinations else "several great options"
++                return {
++                    'message': (
++                        f"Here are top {matched_season} picks: {destination_text}. "
++                        "Would you like a full itinerary or budget-friendly options for any of these?"
++                    ),
++                    'type': 'season_recommendation',
++                    'data': seasonal
++                }
+         
+         # UNESCO sites
+         elif 'unesco' in message_lower:
+             return {
+                 'message': "UNESCO World Heritage Sites are amazing! These locations represent outstanding cultural or natural importance. Our platform features several UNESCO sites including:\n\n🏛️ Cultural Sites:\n• The Colosseum (Rome, Italy)\n• Great Wall of China (Beijing, China)\n• Taj Mahal (Agra, India)\n• Machu Picchu (Cusco, Peru)\n\nWould you like to create an itinerary focused on UNESCO sites?",
+                 'type': 'unesco_info',
+                 'data': {
+                     'unesco_count': 4,
+                     'featured_sites': ['Colosseum', 'Great Wall', 'Taj Mahal', 'Machu Picchu']
+                 }
+             }
+         
+         # Accessibility
+         elif 'accessibility' in message_lower or 'wheelchair' in message_lower or 'disabled' in message_lower:
+             return {
+                 'message': "Accessibility is very important! We ensure all recommendations consider your needs:\n\n♿ Accessibility Features:\n• Most major sites have wheelchair access\n• Elevators and ramps available at museums\n• Accessible transportation options\n• Pre-booking assistance for special needs\n\nApproximately 49% of our travelers have specific accessibility requirements. Would you like me to filter destinations with excellent accessibility?",
+                 'type': 'accessibility_info'
+             }
+         
+         # Thank you / positive feedback
+         elif any(word in message_lower for word in ['thank', 'thanks', 'great', 'perfect', 'awesome']):
+             return {
+                 'message': "You're very welcome! 😊 I'm here to make your travel planning as smooth as possible. Is there anything else you'd like to know about your trip?",
+                 'type': 'acknowledgment'
+             }
+         
+         # Default response
+         else:
+             return {
+-                'message': "I'm here to help with your travel planning! I can assist with:\n\n✈️ Services:\n• Destination recommendations\n• Itinerary planning\n• Budget advice\n• Weather information\n• Accessibility options\n• Cultural insights\n\nWhat would you like to explore?",
++                'message': (
++                    "I'm here to help with your travel planning! I can assist with:\n\n"
++                    "✈️ Services:\n"
++                    "• Destination recommendations\n"
++                    "• Itinerary planning\n"
++                    "• Budget advice\n"
++                    "• Weather & season guidance\n"
++                    "• Accessibility options\n"
++                    "• Cultural insights\n\n"
++                    "Tell me your interests, budget, and preferred season or climate to get tailored advice."
++                ),
+                 'type': 'help',
+                 'suggestions': [
+                     'Show me art destinations',
+                     'Plan a week-long trip',
+                     'What\'s the best season to travel?',
+                     'Find family-friendly locations'
+                 ]
+             }
+     
+     def get_conversation_history(self) -> List[Dict[str, Any]]:
+         """Get full conversation history"""
+         return self.conversation_history
+     
+     def clear_history(self):
+         """Clear conversation history"""
+         self.conversation_history = []
+         print("🗑️ Conversation history cleared")
+     
+     def analyze_photo(self, photo_path: str, question: str) -> Dict[str, Any]:
+         """
+         Analyze uploaded travel photo using Gemini Vision API
+         
+         Args:
+             photo_path: Path to photo
+             question: Question about the photo
+ 
+EOF
+)
